@@ -16,6 +16,8 @@
  * Version 1.0.0 - Scott Petersen - Initial design and release
  * Version 2.0.0 - Sean Mathews <coder@f34r.com> - Changed to use UPNP Push API in AD2 web app
  * Version 2.0.1 - Sean Mathews <coder@f34r.com> - Adding CID device management support.
+ * Version 2.0.2 - Sean Mathews <coder@f34r.com> - Fixed app 20 second max timeout. AddZone is now async, added more zones.
+ * Version 2.0.3 - Sean Mathews <coder@f34r.com> - Improved/fixed issues with previous app 20 timeout after more testing.
  */
 
 /*
@@ -149,11 +151,11 @@ def page_main() {
 
     // see if we are already installed
     def foundMsg = ""
-    def mainDevice = getChildDevice("${state.ip}")
-    if (mainDevice) foundMsg = "**** AlarmDecoder already installed ****"
+    def children = getChildDevices()
+    if (children) foundMsg = "**** AlarmDecoder already installed ${children.size()}****"
 
     dynamicPage(name: "page_main") {
-        if (!mainDevice) {
+        if (!children) {
             section("") {
                 href("pageDiscoverDevices", required: false, title: titles("page_discover_devices"), description: descriptions("href_discover_devices"))
             }
@@ -529,7 +531,7 @@ def locationHandler(evt) {
      return
 
     if (debug)
-      log.debug "locationHandler: description: ${description} name: ${evt.name} value: ${evt.value} data: ${evt.data}"
+      log.debug "locationHandler: description: ${evt.description} name: ${evt.name} value: ${evt.value} data: ${evt.data}"
 
     def parsedEvent = ["hub":hub]
     try {
@@ -812,6 +814,30 @@ def cidSet(evt) {
 }
 
 /**
+ * Handle Device Command addZone()
+ * add a zone during post install to keep it async
+ */
+def addZone(evt) {
+
+    def i = evt.value
+    log.info("App Event: addZone ${i}")
+    
+    try {        
+        def zone_switch = addChildDevice("alarmdecoder", "AlarmDecoder virtual contact sensor", "${evt.data}", state.hub, [name: "${evt.data}", label: "${sname} Zone Sensor #${i}", completedSetup: true])    
+        def sensorValue = "open"
+        if (settings.defaultSensorToClosed == true) {
+            sensorValue = "closed"
+        }
+
+        // Set default contact state.
+        zone_switch.sendEvent(name: "contact", value: sensorValue, isStateChange: true, displayed: false)
+    } catch (e) { 
+        log.error "There was an error (${e}) when trying to addZone ${i}"
+    }
+}
+
+
+/**
  * Handle Device Command zoneOn()
  * sets Contact attributes of the alarmdecoder device to open/closed
  */
@@ -903,12 +929,14 @@ def alarmdecoderAlarmHandler(evt) {
  */
 def initSubscriptions() {
     // subscribe to the Smart Home Manager api for alarm status events
-    if (debug) log.debug("initialize: subscribe to SHM alarmSystemStatus API messages")
+    if (debug) log.debug("initSubscriptions: Subscribe to handlers")
     subscribe(location, "alarmSystemStatus", shmAlarmHandler)
+ 
+  // subscribe to add zone handler
+    subscribe(app, addZone)
 
     /* subscribe to local LAN messages to this HUB on TCP port 39500 and UPNP UDP port 1900 */
-    if (debug) log.debug("initialize: subscribe to locations local LAN messages")
-    subscribe(location, "ssdpTerm", locationHandler, [filterEvents: false])
+    subscribe(location, null, locationHandler, [filterEvents: false])
 }
 
 /**
@@ -1046,20 +1074,11 @@ def addExistingDevices() {
 
             }
             // Add virtual zone contact sensors if they do not exist.
-            for (def i = 0; i < 12; i++)
+            // asynchronous to avoid timeout. Apps can only run for 20 seconds or it will be killed.
+            for (def i = 0; i < 20; i++)
             {
-                def newSwitch = state.devices.find { k, v -> k == "${state.ip}:switch${i+1}" }
-                if (!newSwitch)
-                {
-                    def zone_switch = addChildDevice("alarmdecoder", "AlarmDecoder virtual contact sensor", "${state.ip}:switch${i+1}", state.hub, [name: "${state.ip}:switch${i+1}", label: "${sname} Zone Sensor #${i+1}", completedSetup: true])
-
-                    def sensorValue = "open"
-                    if (settings.defaultSensorToClosed == true)
-                        sensorValue = "closed"
-
-                    // Set default contact state.
-                    zone_switch.sendEvent(name: "contact", value: sensorValue, isStateChange: true, displayed: false)
-                }
+                sendEvent(name: "addZone", value: "${i+1}", data: "${state.ip}:switch${i+1}")
+            }
             }
 
             // Add virtual Smoke Alarm sensors if it does not exist.
