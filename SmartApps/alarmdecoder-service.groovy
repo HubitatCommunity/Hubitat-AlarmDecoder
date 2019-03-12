@@ -1079,7 +1079,6 @@ def addExistingDevices() {
             {
                 sendEvent(name: "addZone", value: "${i+1}", data: "${state.ip}:switch${i+1}")
             }
-            }
 
             // Add virtual Smoke Alarm sensors if it does not exist.
             def cd = state.devices.find { k, v -> k == "${state.ip}:SmokeAlarm" }
