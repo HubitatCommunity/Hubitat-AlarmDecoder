@@ -32,8 +32,8 @@ import groovy.transform.Field
 /*
  * System Settings
  */
-@Field debug = true
-@Field max_sensors = 5
+@Field debug = false
+@Field max_sensors = 20
 @Field nocreatedev = false
 @Field create_disarm = true
 // Set the HA system type SmartThings Hub(SHM) or Hubitat Elevation(HSM)
