@@ -13,14 +13,77 @@
  *  for the specific language governing permissions and limitations under the License.
  *
  */
-import groovy.json.JsonSlurper;
-import groovy.util.XmlParser;
 
-import groovy.transform.Field
 /*
- * Turn on verbose debugging
+ * global support
+ */
+import groovy.transform.Field
+
+/*
+ * System Settings
  */
 @Field debug = false
+// Set the HA system type SmartThings Hub(SHM) or Hubitat Elevation(HSM)
+// You will also need to comment out and comment code in sendVerfy and sendDiscover below.
+@Field MONTYPE = "HSM" /* ["HSM", "SHM"] */
+
+
+/*
+ * build hubAction SUBSCRIBE object.
+ * Leave comments out for the HUB type being used.
+ */
+def getHubSubscribeAction(urn, address, callbackPath) {
+	def result
+
+	def obj = [
+		method: "SUBSCRIBE",
+		path: path,
+		headers: [
+			HOST: urn,
+			CALLBACK: "<http://${address}/notify${callbackPath}>",
+			NT: "upnp:event",
+			TIMEOUT: "Second-28800"
+		]
+	]
+
+	if(MONTYPE == "SHM") {
+		// Comment out the next line if we are using Hubitat
+		//result = new physicalgraph.device.HubAction(obj)
+		// We get requestId back in parse() so we know what it is.
+		result.requestId = "SUBSCRIBE"
+	}
+
+	if(MONTYPE == "HSM") {
+		// Comment out the next line if we are using SmartThings
+		result = new hubitat.device.HubAction(obj)
+	}
+
+    return result
+}
+
+/*
+ * build hubAction HTTPRequest  object.
+ * Leave comments out for the HUB type being used.
+ */
+def getHubHttpRequestAction(httpRequest, host) {
+    def result
+    if(MONTYPE == "SHM") {
+       // Comment out the next line if we are using Hubitat
+        //result = new physicalgraph.device.HubAction(httpRequest, "${host}")
+    }
+    if(MONTYPE == "HSM") {
+       // Comment out the next line if we are using SmartThings
+        result = new hubitat.device.HubAction(httpRequest, "${host}")
+    }
+    return result
+}
+
+
+/*
+ * Parsing support
+ */
+import groovy.json.JsonSlurper;
+import groovy.util.XmlParser;
 
 preferences {
     section() {
@@ -100,8 +163,164 @@ metadata {
         command "bypass12"
     }
 
+    simulator {
+        // TODO: define status and reply messages here
+    }
+
+    tiles(scale: 2) {
+        multiAttributeTile(name: "status", type: "generic", width: 6, height: 4) {
+            tileAttribute("device.panel_state", key: "PRIMARY_CONTROL") {
+                attributeState "armed", label: 'Armed', icon: "st.security.alarm.on", backgroundColor: "#ffa81e"
+                attributeState "armed_stay", label: 'Armed (stay)', icon: "st.security.alarm.on", backgroundColor: "#ffa81e"
+                attributeState "disarmed", label: 'Disarmed', icon: "st.security.alarm.off", backgroundColor: "#79b821", defaultState: true
+                attributeState "alarming", label: 'Alarming!', icon: "st.home.home2", backgroundColor: "#ff4000"
+                attributeState "fire", label: 'Fire!', icon: "st.contact.contact.closed", backgroundColor: "#ff0000"
+                attributeState "ready", label: 'Ready', icon: "st.security.alarm.off", backgroundColor: "#79b821"
+                attributeState "notready", label: 'Not Ready', icon: "st.security.alarm.off", backgroundColor: "#e86d13"
+            }
+        }
+
+        standardTile("arm_disarm", "device.panel_state", inactiveLabel: false, width: 2, height: 2) {
+            state "armed", action:"disarm", icon:"st.security.alarm.off", label: "DISARM"
+            state "armed_stay", action:"disarm", icon:"st.security.alarm.off", label: "DISARM"
+            state "disarmed", action:"arm_away", icon:"st.security.alarm.on", label: "AWAY"
+            state "alarming", action:"disarm", icon:"st.security.alarm.off", label: "DISARM"
+            state "fire", action:"disarm", icon:"st.security.alarm.off", label: "DISARM"
+            state "ready", action:"arm_away", icon:"st.security.alarm.off", label: "AWAY"
+            state "notready", action:"disarm", icon:"st.security.alarm.off", label: "DISARM"
+        }
+
+        standardTile("stay_disarm", "device.panel_state", inactiveLabel: false, width: 2, height: 2) {
+            state "armed", action:"disarm", icon:"st.security.alarm.off", label: "DISARM"
+            state "armed_stay", action:"disarm", icon:"st.security.alarm.off", label: "DISARM"
+            state "disarmed", action:"arm_stay", icon:"st.Home.home4", label: "STAY"
+            state "alarming", action:"disarm", icon:"st.security.alarm.off", label: "DISARM"
+            state "fire", action:"disarm", icon:"st.security.alarm.off", label: "DISARM"
+            state "ready", action:"arm_stay", icon:"st.security.alarm.off", label: "STAY"
+            state "notready", action:"disarm", icon:"st.security.alarm.off", label: "DISARM"
+        }
+
+        standardTile("panic", "device.panic_state", inactiveLabel: false, width: 1, height: 1) {
+            state "default", icon:"http://www.alarmdecoder.com/st/ad2-police.png", label: "PANIC", nextState: "panic1", action: "panic1"
+            state "panic1", icon: "http://www.alarmdecoder.com/st/ad2-police.png", label: "PANIC", nextState: "panic2", action: "panic2", backgroundColor: "#ffa81e"
+            state "panic2", icon: "http://www.alarmdecoder.com/st/ad2-police.png", label: "PANIC", nextState: "default", action: "panic", backgroundColor: "#ff4000"
+        }
+
+        standardTile("fire", "device.fire_state", inactiveLabel: false, width: 1, height: 1) {
+            state "default", icon:"http://www.alarmdecoder.com/st/ad2-fire.png", label: "FIRE", nextState: "fire1", action: "fire1"
+            state "fire1", icon: "http://www.alarmdecoder.com/st/ad2-fire.png", label: "FIRE", nextState: "fire2", action: "fire2", backgroundColor: "#ffa81e"
+            state "fire2", icon: "http://www.alarmdecoder.com/st/ad2-fire.png", label: "FIRE", nextState: "default", action: "fire", backgroundColor: "#ff4000"
+        }
+
+        standardTile("aux", "device.aux_state", inactiveLabel: false, width: 1, height: 1) {
+            state "default", icon:"http://www.alarmdecoder.com/st/ad2-aux.png", label: "AUX", nextState: "aux1", action: "aux1"
+            state "aux1", icon: "http://www.alarmdecoder.com/st/ad2-aux.png", label: "AUX", nextState: "aux2", action: "aux2", backgroundColor: "#ffa81e"
+            state "aux2", icon: "http://www.alarmdecoder.com/st/ad2-aux.png", label: "AUX", nextState: "default", action: "aux", backgroundColor: "#ff4000"
+        }
+
+        valueTile("zoneStatus1", "device.zoneStatus1", inactiveLabel: false, width: 1, height: 1) {
+            state "default", icon:"", label: '${currentValue}', action: "bypass1", nextState: "default", backgroundColors: [
+                [value: 0, color: "#ffffff"],
+                [value: 1, color: "#ff0000"],
+                [value: 99, color: "#ff0000"]
+            ]
+        }
+
+        valueTile("zoneStatus2", "device.zoneStatus2", inactiveLabel: false, width: 1, height: 1) {
+            state "default", icon:"", label: '${currentValue}', action: "bypass2", nextState: "default", backgroundColors: [
+                [value: 0, color: "#ffffff"],
+                [value: 1, color: "#ff0000"],
+                [value: 99, color: "#ff0000"]
+            ]
+        }
+
+        valueTile("zoneStatus3", "device.zoneStatus3", inactiveLabel: false, width: 1, height: 1) {
+            state "default", icon:"", label: '${currentValue}', action: "bypass3", nextState: "default", backgroundColors: [
+                [value: 0, color: "#ffffff"],
+                [value: 1, color: "#ff0000"],
+                [value: 99, color: "#ff0000"]
+            ]
+        }
+
+        valueTile("zoneStatus4", "device.zoneStatus4", inactiveLabel: false, width: 1, height: 1) {
+            state "default", icon:"", label: '${currentValue}', action: "bypass4", nextState: "default", backgroundColors: [
+                [value: 0, color: "#ffffff"],
+                [value: 1, color: "#ff0000"],
+                [value: 99, color: "#ff0000"]
+            ]
+        }
+
+        valueTile("zoneStatus5", "device.zoneStatus5", inactiveLabel: false, width: 1, height: 1) {
+            state "default", icon:"", label: '${currentValue}', action: "bypass5", nextState: "default", backgroundColors: [
+                [value: 0, color: "#ffffff"],
+                [value: 1, color: "#ff0000"],
+                [value: 99, color: "#ff0000"]
+            ]
+        }
+
+        valueTile("zoneStatus6", "device.zoneStatus6", inactiveLabel: false, width: 1, height: 1) {
+            state "default", icon:"", label: '${currentValue}', action: "bypass6", nextState: "default", backgroundColors: [
+                [value: 0, color: "#ffffff"],
+                [value: 1, color: "#ff0000"],
+                [value: 99, color: "#ff0000"]
+            ]
+        }
+
+        valueTile("zoneStatus7", "device.zoneStatus7", inactiveLabel: false, width: 1, height: 1) {
+            state "default", icon:"", label: '${currentValue}', action: "bypass7", nextState: "default", backgroundColors: [
+                [value: 0, color: "#ffffff"],
+                [value: 1, color: "#ff0000"],
+                [value: 99, color: "#ff0000"]
+            ]
+        }
+
+        valueTile("zoneStatus8", "device.zoneStatus8", inactiveLabel: false, width: 1, height: 1) {
+            state "default", icon:"", label: '${currentValue}', action: "bypass8", nextState: "default", backgroundColors: [
+                [value: 0, color: "#ffffff"],
+                [value: 1, color: "#ff0000"],
+                [value: 99, color: "#ff0000"]
+            ]
+        }
+
+        valueTile("zoneStatus9", "device.zoneStatus9", inactiveLabel: false, width: 1, height: 1) {
+            state "default", icon:"", label: '${currentValue}', action: "bypass9", nextState: "default", backgroundColors: [
+                [value: 0, color: "#ffffff"],
+                [value: 1, color: "#ff0000"],
+                [value: 99, color: "#ff0000"]
+            ]
+        }
+
+        valueTile("zoneStatus10", "device.zoneStatus10", inactiveLabel: false, width: 1, height: 1) {
+            state "default", icon:"", label: '${currentValue}', action: "bypass10", nextState: "default", backgroundColors: [
+                [value: 0, color: "#ffffff"],
+                [value: 1, color: "#ff0000"],
+                [value: 99, color: "#ff0000"]
+            ]
+        }
+
+        valueTile("zoneStatus11", "device.zoneStatus11", inactiveLabel: false, width: 1, height: 1) {
+            state "default", icon:"", label: '${currentValue}', action: "bypass11", nextState: "default", backgroundColors: [
+                [value: 0, color: "#ffffff"],
+                [value: 1, color: "#ff0000"],
+                [value: 99, color: "#ff0000"]
+            ]
+        }
+
+        valueTile("zoneStatus12", "device.zoneStatus12", inactiveLabel: false, width: 1, height: 1) {
+            state "default", icon:"", label: '${currentValue}', action: "bypass12", nextState: "default", backgroundColors: [
+                [value: 0, color: "#ffffff"],
+                [value: 1, color: "#ff0000"],
+                [value: 99, color: "#ff0000"]
+            ]
+        }
+
+        standardTile("refresh", "device.refresh", inactiveLabel: false, decoration: "flat", width: 6, height: 2) {
+            state "default", action:"refresh.refresh", icon:"st.secondary.refresh"
+        }
+
         main(["status"])
         details(["status", "arm_disarm", "stay_disarm", "panic", "fire", "aux", "zoneStatus1", "zoneStatus2", "zoneStatus3", "zoneStatus4", "zoneStatus5", "zoneStatus6", "zoneStatus7", "zoneStatus8", "zoneStatus9", "zoneStatus10", "zoneStatus11", "zoneStatus12", "refresh"])
+    }
 }
 
 
@@ -177,7 +396,6 @@ def parse_json(String headers, String body) {
 // Parse XML and new state. Build UI and return UI update events
 def parse_xml(String headers, String body) {
     log.trace("--- parse_xml")
-    if (debug) log.debug(body)
     def xmlResult = new XmlSlurper().parseText(body)
 
     def resultMap = [:]
@@ -560,6 +778,11 @@ def update_state(data) {
         events << createEvent(name: "cid-set", value: data.rawmessage, displayed: true, isStateChange: true)
     }
 
+    // Event Type 17 RFX send eventmessage upstream if we find one
+    if (data.eventid == 17) {
+        events << createEvent(name: "rfx-set", value: data.eventmessage, displayed: true, isStateChange: true)
+    }
+
     // Event Type 5 Bypass
     if (data.eventid == 5) {
         log.debug("bypass-set: ${data.panel_bypassed}")
@@ -850,7 +1073,8 @@ def hub_http_get(host, path) {
         headers:    [ HOST: host ]
     ]
 
-    return new hubitat.device.HubAction(httpRequest, "${host}")
+    return getHubHttpRequestAction(httpRequest, "${host}")
+
 }
 
 def hub_http_post(host, path, body) {
@@ -860,10 +1084,10 @@ def hub_http_post(host, path, body) {
         method:     "POST",
         path:       path,
         headers:    [ HOST: host, "Content-Type": "application/json" ],
-        body:      (String) body
+        body:       body
     ]
 
-    return new hubitat.device.HubAction(httpRequest, "${host}")
+    return getHubHttpRequestAction(httpRequest, "${host}")
 }
 
 def _get_user_code() {
@@ -890,19 +1114,7 @@ def subscribeAction(urn, path, callbackPath="") {
     // get our HUBs details so the AlarmDecoder knows how to call us back on events
     def address = getCallBackAddress()
     if (debug) log.trace "our address ${address}"
-    def result = new hubitat.device.HubAction(
-        method: "SUBSCRIBE",
-        path: path,
-        headers: [
-            HOST: urn,
-            CALLBACK: "<http://${address}/notify$callbackPath>",
-            NT: "upnp:event",
-            TIMEOUT: "Second-28800"
-        ]
-    )
-
-    // We get requestId back in parse() so we know what it is.
-//  result.requestId = "SUBSCRIBE"
+    def result = getHubSubscribeAction(urn, address, callbackPath)
 
     // log.debug "SUBSCRIBE result: ${result}"
     sendHubCommand(result)
