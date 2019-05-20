@@ -13,8 +13,25 @@
  *  for the specific language governing permissions and limitations under the License.
  *
  */
+
+ /*
+ * global support
+ */
+import groovy.transform.Field
+@Field APPNAMESPACE = "alarmdecoder"
+
 metadata {
-    definition (name: "AlarmDecoder virtual contact sensor", namespace: "alarmdecoder", author: "scott@nutech.com") {
+    definition (name: "AlarmDecoder virtual contact sensor", namespace: APPNAMESPACE, author: "Nu Tech Software Solutions, Inc.") {
         capability "Contact Sensor"
+    }
+
+    // tile definitions
+    tiles {
+        standardTile("sensor", "device.contact", width: 2, height: 2, canChangeIcon: true) {
+            state "closed", label: '${name}', icon: "st.contact.contact.closed", backgroundColor: "#00a0dc"
+            state "open", label: '${name}', icon: "st.contact.contact.open", backgroundColor: "#e86d13"
+        }
+        main "sensor"
+        details "sensor"
     }
 }
